@@ -9,7 +9,7 @@ import time
 
 CASE_DIRECTORY = Path('stage1')
 PROGRAM = Path('stage1.py')
-OUTPUT = Path('python_output.txt')
+OUTPUT_DIRECTORY = Path('output')
 RESULTS = Path('python_results.csv')
 BLOCK_SIZE = 1024
 GATE_TYPES = {'AND2': 0, 'OR2': 1, 'NOT': 2}
@@ -30,10 +30,10 @@ def read_case(path):
     return input_count, output_count, rows, costs, target, runtime_limit
 
 
-def run_program(case_path):
+def run_program(case_path, output_path):
     start = time.perf_counter()
     process = subprocess.run(
-        [sys.executable, str(PROGRAM), str(case_path), str(OUTPUT)],
+        [sys.executable, str(PROGRAM), str(case_path), str(output_path)],
         capture_output=True,
         timeout=30,
     )
@@ -43,8 +43,8 @@ def run_program(case_path):
     return elapsed_ms
 
 
-def read_circuit(input_count, output_count, costs):
-    lines = OUTPUT.read_text().splitlines()
+def read_circuit(output_path, input_count, output_count, costs):
+    lines = output_path.read_text().splitlines()
     gates = [line.split() for line in lines[:-1]]
     outputs = list(map(int, lines[-1].split()))
     area = 0
@@ -103,11 +103,15 @@ def write_results(results):
 
 def main():
     results = []
+    OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
     for case_path in sorted(CASE_DIRECTORY.glob('case_*.txt')):
         input_count, output_count, rows, costs, target, runtime_limit = read_case(case_path)
+        output_path = OUTPUT_DIRECTORY / case_path.name
         try:
-            elapsed_ms = run_program(case_path)
-            gates, outputs, area, delay = read_circuit(input_count, output_count, costs)
+            # Do not accidentally validate a stale output from an earlier run.
+            output_path.unlink(missing_ok=True)
+            elapsed_ms = run_program(case_path, output_path)
+            gates, outputs, area, delay = read_circuit(output_path, input_count, output_count, costs)
             verify_truth_table(input_count, rows, gates, outputs)
             status = 'correct' if not runtime_limit or elapsed_ms <= runtime_limit else 'time limit exceeded'
             results.append([case_path.name, status, area, delay, round(elapsed_ms), target, runtime_limit])
